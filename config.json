@@ -1,0 +1,14 @@
+{
+  "bot_token": "8433511793:AAHd5YmCnJ73ms3dTcmAR8tF1ZgYjiVW3kc",
+  "allowed_chat_id": -1003021032727,
+  "admin_user_ids": [661085341, 886573983, 199664531],
+  "banned_user_ids": [1436937738],
+  "banned_student_ids": ["403105877"],
+  "timezone": "Asia/Tehran",
+  "database_path": "/content/drive/MyDrive/AGT-HW-DB/agt_volunteer.sqlite",
+  "window_minutes": 60,
+  "auction_window_minutes": 60,
+  "reserved_price": "0.6",
+  "min_decrement": "0.05",
+  "countdownIntercalSec": 10
+}
