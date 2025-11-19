@@ -8,7 +8,7 @@
   "database_path": "/content/drive/MyDrive/AGT-DB/agt_volunteer.sqlite",
   "window_minutes": 60,
   "auction_window_minutes": 60,
-  "reserved_price": "0.6",
+  "reserved_price": "1",
   "min_decrement": "0.05",
   "countdownIntercalSec": 10
 }
