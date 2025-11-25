@@ -11,7 +11,7 @@ SP = r" "
 DASH = r"-"
 NUM = r"(?P<num>[0-9۰-۹٠-٩]+)"
 TITLE = r"(?P<title>.+)"
-FULLNAME = r"(?P<name>[آ-یءئؤإأا-ی\s]+)"
+FULLNAME = r"(?P<name>[آ-یءئؤإأا-ی\s\u200c]+)"
 SID = r"(?P<sid>[0-9۰-۹٠-٩]+)"
 
 STRICT_PATTERN = re.compile(
