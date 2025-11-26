@@ -1,5 +1,6 @@
 import math
 import re
+import random
 from datetime import datetime, timedelta
 from decimal import Decimal, ROUND_DOWN, InvalidOperation
 
@@ -541,6 +542,254 @@ async def announce_auction_winner(context: ContextTypes.DEFAULT_TYPE, auction_na
 
 # -------------------------- END   AUCTION --------------------------
 
+# ----------------------- SECOND PRICE AUCTION ----------------------
+
+async def second_auction_finalize_job(context: ContextTypes.DEFAULT_TYPE):
+    job = context.job
+    auction_name = job.data["auction_name"]
+    auctions: dict = context.bot_data["auctions"]
+    st = auctions.get(auction_name)
+    if not st:
+        return
+    if st.get("is_closed", False):
+        return
+    st["is_closed"] = True
+    await second_announce_auction_winner(context, auction_name)
+
+
+async def second_announce_auction_winner(context: ContextTypes.DEFAULT_TYPE, auction_name: str):
+    cfg: dict = context.bot_data["cfg"]
+    auctions: dict = context.bot_data["auctions"]
+    st = auctions.get(auction_name)
+    if not st:
+        return
+    if st.get("is_closed", False) is not True:
+        st["is_closed"] = True
+
+    bids_dict: dict = st["bids"]
+    if not bids_dict:
+        await context.bot.send_message(
+            chat_id=cfg["allowed_chat_id"],
+            text=f"📌 مناقصه‌ی {auction_name} بدون برنده به پايان رسيد.",
+        )
+        return
+
+
+    # bids_dict: student_id -> [bid_value, telegram_user_id, display_name]
+    bids = []
+    for student_id, bid_info in bids_dict.items():
+        bid_value, user_id, display_name = bid_info
+        bids.append(
+            {
+                "student_id": student_id,
+                "bid_value": Decimal(bid_value),
+                "user_id": user_id,
+                "display_name": display_name,
+            }
+        )
+
+    # مقادير بيد يکتا و مرتب شده (از کم به زياد)
+    distinct_values = sorted({b["bid_value"] for b in bids})
+    if not distinct_values:
+        await context.bot.send_message(
+            chat_id=cfg["allowed_chat_id"],
+            text=f"📌 مناقصه‌ی {auction_name} بدون برنده به پايان رسيد.",
+        )
+        return
+
+    min_bid = distinct_values[0]
+    # همه کساني که کمترين بيد را داده اند
+    min_candidates = [b for b in bids if b["bid_value"] == min_bid]
+
+    # انتخاب يکنواخت تصادفي بين کساني که کمترين بيد را داده اند
+    winner = random.choice(min_candidates)
+
+    # قيمت نهايي: دومين قيمت کمتر بعد از حذف مقادير تکراري
+    if len(distinct_values) >= 2:
+        final_price = distinct_values[1]
+    else:
+        # اگر فقط يک قيمت يکتا وجود دارد، قيمت نهايي را همان کمترين قيمت در نظر ميگيريم
+        final_price = min_bid
+
+    # به روز کردن وضعيت در st (در صورت نياز جاهاي ديگه استفاده شود)
+    st["winner_user_id"] = winner["user_id"]
+    st["winner_display_name"] = winner["display_name"]
+    st["winner_student_id"] = winner["student_id"]
+    st["current_price"] = final_price
+    st["min_bid_value"] = min_bid
+
+    mention = f'<a href="tg://user?id={winner["user_id"]}">{winner["display_name"]}</a>'
+
+    caption = (
+        f"🏁 مناقصه‌ی قيمت دوم «{auction_name}» به پايان رسيد!\n\n"
+        f"برنده: {mention}\n"
+        f"شماره‌ی دانشجويي برنده: <code>{winner['student_id']}</code>\n"
+        f"کمترين بيد ثبت شده: {min_bid:.3f}\n"
+        f"قيمت نهايي (دومين قيمت کمتر): {final_price:.3f}"
+    )
+
+    await context.bot.send_animation(
+        chat_id=cfg["allowed_chat_id"],
+        animation="https://gifdb.com/images/high/sold-dancing-chihuahua-7o32vsm28i7116a2.gif",
+        caption=caption,
+        parse_mode=constants.ParseMode.HTML,
+    )
+
+    #------------------
+
+async def cmd_second_price_auction(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await admin_only(update, context):
+        return
+
+    if len(context.args) != 1:
+        await update.message.reply_text("Usage: /start_second_price_auction <auction_name>")
+        return
+
+    auction_name = context.args[0].strip()
+    cfg: dict = context.bot_data["cfg"]
+    tzinfo = tz.gettz(cfg["timezone"])
+    auctions: dict = context.bot_data["auctions"]
+
+    old = auctions.get(auction_name)
+    if old and not old.get("is_closed", False):
+        for job in context.job_queue.get_jobs_by_name(f"auction_finish_{auction_name}"):
+            job.schedule_removal()
+        old["is_closed"] = True
+
+    window_min = int(cfg["second_auction_window_minutes"])
+    reserved_price = Decimal(3)
+
+    start_dt = datetime.now(tzinfo)
+    end_dt = start_dt + timedelta(minutes=window_min)
+
+    auctions[auction_name] = {
+        "name": auction_name,
+        "start_dt": start_dt,
+        "end_dt": end_dt,
+        "reserved_price": reserved_price,
+        "current_price": reserved_price,
+        "winner_user_id": None,
+        "winner_display_name": None,
+        "is_closed": False,
+        "bids" : {}
+    }
+
+    context.job_queue.run_once(
+        second_auction_finalize_job,
+        when=end_dt,
+        data={"auction_name": auction_name, "my_bot_update": update},
+        name=f"auction_finish_{auction_name}",
+    )
+
+    await context.bot.send_message(
+        chat_id=cfg["allowed_chat_id"],
+        text=(
+            f"🔔 <b>مناقصه‌ی قيمت دوم {auction_name} شروع شد</b>!\n"
+            f"در اين مناقصه بيدها مخفي هستند و فقط براي ربات ارسال می‌شوند.\n\n"
+            f"• <b>حداکثر بيد مجاز:</b> {reserved_price} نمره\n"
+            f"• <b>حداقل بيد مجاز:</b> 0 نمره\n\n"   
+            f"⏱️ <b>پنجره زماني ارسال بيد:</b>\n"
+            f"از اين لحظه يک پنجره <b>{window_min} دقيقه‌ای</b> براي ارسال بيدها باز است.\n"
+            f"در اين مدت هر دانشجو می‌تواند <b>يک بيد</b> ثبت کند.\n"
+            f"<b>حتماً</b> بيد خود را به صورت <b>خصوصی</b> براي ربات بفرستيد؛\n"
+            f"ارسال بيد در گروه معتبر نيست و در نظر گرفته نمی‌شود.\n\n"
+            f"📝 <b>فرمت ارسال بيد:</b>\n"
+            f"<code>/pbid {auction_name} &lt;student_id&gt; &lt;price&gt;</code>\n\n"
+            f"• مقدار &lt;price&gt; بايد با دقت <b>سه رقم اعشار</b> وارد شود.\n"
+            f"• اگر بيش از سه رقم اعشار وارد کنيد، مقدار بيد شما به روش <b>قطع کردن</b>\n"
+            f"  تا سه رقم اعشار بريده می‌شود.\n"
+            f"• ملاک شناسايي شما <b>شماره‌ی دانشجويی</b> است؛ از درست وارد کردن آن مطمئن باشيد.\n"
+            f"• پس از ارسال يک بيد با يک شماره‌ی دانشجويی، <b>امکان تغيير يا به روزرسانی آن وجود ندارد</b>.\n\n"
+            f"🏆 <b>نحوه‌ی تعيين برنده:</b>\n"
+            f"• برنده کسی است که <b>کمترين بيد</b> معتبر را ثبت کرده باشد.\n"
+            f"• قيمت پرداختی برنده برابر <b>دومين قيمت کمتر</b> ميان بيدهای معتبر است.\n"
+            f"• در صورت مساوي بودن کمترين بيد بين چند دانشجو،\n"
+            f"  ابتدا قيمت‌های تکراری يکسان به عنوان يک قيمت در نظر گرفته می‌شوند،\n"
+            f"  سپس از بين دانشجويانی که کمترين قيمت را داده‌اند به صورت <b>يکنواخت تصادفی</b>\n"
+            f"  يک نفر به عنوان برنده انتخاب می‌شود و قيمت پرداختی او برابر <b>دومين قيمت کمينه</b>\n"
+            f"  (بعد از حذف قيمت‌های تکراری) خواهد بود."
+        ),
+        parse_mode=constants.ParseMode.HTML
+    )
+
+
+async def cmd_pbid(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) != 3:
+        return
+
+    PERSIAN_ARABIC_DIGITS = str.maketrans(
+        "۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩",
+        "01234567890123456789"
+    )
+    raw = context.args[1].strip()
+    normalized = raw.translate(PERSIAN_ARABIC_DIGITS)
+    NUMBER_PATTERN = re.compile(r"^\d+$")
+
+    if not NUMBER_PATTERN.match(normalized):
+        return
+
+    auction_name = context.args[0].strip()
+    try:
+        bid_raw = context.args[2].strip()
+        bid_normalized = bid_raw.translate(PERSIAN_ARABIC_DIGITS)
+        bid_value = Decimal(bid_normalized)
+    except InvalidOperation:
+        return
+
+    bid_value = bid_value.quantize(Decimal("0.001"), rounding=ROUND_DOWN)
+    cfg: dict = context.bot_data["cfg"]
+    tzinfo = tz.gettz(cfg["timezone"])
+    auctions: dict = context.bot_data["auctions"]
+    st = auctions.get(auction_name)
+    bids: dict = st["bids"]
+    reserved_price = Decimal(st["reserved_price"])
+
+    if is_user_banned(update, cfg):
+        return
+
+    if not st:
+        return
+    if st.get("is_closed", False):
+        return
+
+    now = datetime.now(tzinfo)
+    if now >= st["end_dt"]:
+        st["is_closed"] = True
+        return
+
+    if bid_value > reserved_price or bid_value < 0:
+        return
+
+    # --- accepted bid: record winner and notify
+    # st["winner_user_id"] = update.effective_user.id if update.effective_user else None
+    # disp = update.effective_user.full_name if update.effective_user else "کاربر"
+    # st["winner_display_name"] = disp
+    user_id = update.effective_user.id if update.effective_user else None
+    disp = update.effective_user.full_name if update.effective_user else "کاربر"
+    if str(normalized) not in bids:
+        bids[str(normalized)] = [Decimal(bid_value), user_id, disp]
+
+    await update.message.reply_text(
+        f"✅ پیشنهاد پذیرفته شد: {bid_value}",
+        parse_mode=constants.ParseMode.HTML,
+    )
+
+    # --- NEW: reset/start the countdown after an accepted bid
+    # schedule_auction_countdown(context, auction_name)
+
+    # If next possible bid would be non-positive, finish immediately.
+    # next_possible = (bid_value - min_dec).quantize(Decimal("0.001"), rounding=ROUND_DOWN)
+    # if next_possible <= 0:
+        # cancel countdown + any scheduled time-window finalizer
+        # _cancel_countdown_jobs(context.job_queue, auction_name)
+        # for job in context.job_queue.get_jobs_by_name(f"auction_finish_{auction_name}"):
+        #     job.schedule_removal()
+        # st["is_closed"] = True
+        # await announce_auction_winner(context, auction_name)
+
+
+# ----------------------- SECOND PRICE AUCTION ----------------------
+
 async def build_application(cfg: dict, db: Database):
     app = ApplicationBuilder().token(cfg["bot_token"]).build()
 
@@ -560,7 +809,9 @@ async def build_application(cfg: dict, db: Database):
     app.add_handler(CommandHandler("ruok", cmd_ruok))
 
     app.add_handler(CommandHandler("start_reserved_price_auction", cmd_reserved_price_auction))
+    app.add_handler(CommandHandler("start_second_price_auction", cmd_second_price_auction))
     app.add_handler(CommandHandler("bid", cmd_bid, filters=filters.UpdateType.MESSAGE))
+    app.add_handler(CommandHandler("pbid", cmd_pbid, filters=(filters.UpdateType.MESSAGE & filters.ChatType.PRIVATE)))
 
     app.add_handler(
         MessageHandler(filters.ChatType.GROUPS & filters.TEXT & filters.UpdateType.MESSAGE & ~filters.COMMAND,

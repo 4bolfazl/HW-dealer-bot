@@ -10,5 +10,6 @@
   "auction_window_minutes": 60,
   "reserved_price": "1",
   "min_decrement": "0.05",
-  "countdownIntercalSec": 10
+  "countdownIntercalSec": 10,
+  "second_auction_window_minutes": 1
 }
