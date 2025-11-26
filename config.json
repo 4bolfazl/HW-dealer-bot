@@ -1,6 +1,7 @@
 {
   "bot_token": "8433511793:AAHd5YmCnJ73ms3dTcmAR8tF1ZgYjiVW3kc",
   "allowed_chat_id": -1003021032727,
+  "lab_chat_id": -1003131930279,
   "admin_user_ids": [661085341, 886573983, 199664531],
   "banned_user_ids": [1436937738],
   "banned_student_ids": ["403105877"],

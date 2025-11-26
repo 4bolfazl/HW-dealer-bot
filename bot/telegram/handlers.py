@@ -743,6 +743,8 @@ async def cmd_pbid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tzinfo = tz.gettz(cfg["timezone"])
     auctions: dict = context.bot_data["auctions"]
     st = auctions.get(auction_name)
+    if "min_decrement" in st:
+        return
     bids: dict = st["bids"]
     reserved_price = Decimal(st["reserved_price"])
 
@@ -776,6 +778,10 @@ async def cmd_pbid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"✅ پیشنهاد پذیرفته شد: {bid_value}",
         parse_mode=constants.ParseMode.HTML,
+    )
+
+    await update.message.forward(
+        cfg["lab_chat_id"]
     )
 
     # --- NEW: reset/start the countdown after an accepted bid
@@ -814,7 +820,7 @@ async def build_application(cfg: dict, db: Database):
 
     app.add_handler(CommandHandler("start_reserved_price_auction", cmd_reserved_price_auction))
     app.add_handler(CommandHandler("start_second_price_auction", cmd_second_price_auction))
-    app.add_handler(CommandHandler("bid", cmd_bid, filters=filters.UpdateType.MESSAGE))
+    app.add_handler(CommandHandler("bid", cmd_bid, filters=(filters.UpdateType.MESSAGE & filters.ChatType.GROUPS)))
     app.add_handler(CommandHandler("pbid", cmd_pbid, filters=(filters.UpdateType.MESSAGE & filters.ChatType.PRIVATE)))
 
     app.add_handler(
