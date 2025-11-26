@@ -768,6 +768,8 @@ async def cmd_pbid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     disp = update.effective_user.full_name if update.effective_user else "کاربر"
     if str(normalized) not in bids:
         bids[str(normalized)] = [Decimal(bid_value), user_id, disp]
+    else:
+        return
 
     await update.message.reply_text(
         f"✅ پیشنهاد پذیرفته شد: {bid_value}",
