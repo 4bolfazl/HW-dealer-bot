@@ -462,7 +462,7 @@ async def cmd_bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     current_price = Decimal(str(st["current_price"]))
-    if not st["min_decrement"]:
+    if "min_decrement" not in st:
         return
     min_dec = Decimal(str(st["min_decrement"]))
 
