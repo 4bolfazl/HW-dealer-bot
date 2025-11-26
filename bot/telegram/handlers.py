@@ -462,6 +462,8 @@ async def cmd_bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     current_price = Decimal(str(st["current_price"]))
+    if not st["min_decrement"]:
+        return
     min_dec = Decimal(str(st["min_decrement"]))
 
     acceptable_max = (current_price - min_dec).quantize(Decimal("0.001"), rounding=ROUND_DOWN)
