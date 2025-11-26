@@ -625,7 +625,7 @@ async def second_announce_auction_winner(context: ContextTypes.DEFAULT_TYPE, auc
     caption = (
         f"🏁 مناقصه‌ی قيمت دوم «{auction_name}» به پايان رسيد!\n\n"
         f"برنده: {mention}\n"
-        f"شماره‌ی دانشجويي برنده: <code>{winner['student_id']}</code>\n"
+        f"شماره‌ی دانشجويی برنده: <code>{winner['student_id']}</code>\n"
         f"کمترين بيد ثبت شده: {min_bid:.3f}\n"
         f"قيمت نهايی (دومين کمترین قیمت): {final_price:.3f}"
     )
