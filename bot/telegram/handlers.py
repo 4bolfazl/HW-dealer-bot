@@ -591,7 +591,7 @@ async def second_announce_auction_winner(context: ContextTypes.DEFAULT_TYPE, auc
         )
 
     # مقادير بيد يکتا و مرتب شده (از کم به زياد)
-    distinct_values = sorted({b["bid_value"] for b in bids})
+    distinct_values = sorted([b["bid_value"] for b in bids])
     if not distinct_values:
         await context.bot.send_message(
             chat_id=cfg["allowed_chat_id"],
